@@ -1,0 +1,50 @@
+[
+  {
+    "id": "claim_01",
+    "claim": "Pemerintah bagikan bantuan uang tunai 5 juta rupiah lewat tautan WhatsApp dengan mengisi nomor rekening.",
+    "ground_truth": "Ditolak",
+    "category": "Penipuan / Hoaks Bantuan"
+  },
+  {
+    "id": "claim_02",
+    "claim": "Kementerian Komunikasi dan Digital mengidentifikasi ribuan konten hoaks sepanjang tahun 2024.",
+    "ground_truth": "Didukung",
+    "category": "Pemerintahan / Statistik Resmi"
+  },
+  {
+    "id": "claim_03",
+    "claim": "Minum air rebusan daun serai dapat menyembuhkan diabetes stadium empat secara instan dalam 3 hari.",
+    "ground_truth": "Ditolak",
+    "category": "Kesehatan"
+  },
+  {
+    "id": "claim_04",
+    "claim": "Badan Meteorologi Klimatologi dan Geofisika (BMKG) mengonfirmasi terjadinya gempa tektonik di wilayah selatan Jawa.",
+    "ground_truth": "Didukung",
+    "category": "Bencana Alam"
+  },
+  {
+    "id": "claim_05",
+    "claim": "Ada makhluk asing luar angkasa ditemukan mendarat di atap gedung Monas Jakarta kemarin malam.",
+    "ground_truth": "Ditolak",
+    "category": "Konspirasi / Hiburan"
+  },
+  {
+    "id": "claim_06",
+    "claim": "Seseorang di desa antah berantah mengaku melihat cahaya aneh tanpa bukti dan saksi mata.",
+    "ground_truth": "Not Enough Information",
+    "category": "Klaim Tidak Terverifikasi"
+  },
+  {
+    "id": "claim_07",
+    "claim": "Bank Indonesia menerbitkan uang pecahan 1.000.000 rupiah bergambar Presiden Joko Widodo yang sah untuk belanja.",
+    "ground_truth": "Ditolak",
+    "category": "Keuangan / Uang Kertas"
+  },
+  {
+    "id": "claim_08",
+    "claim": "Pemerintah Indonesia meluncurkan program Digital Talent Scholarship untuk pelatihan keterampilan teknologi.",
+    "ground_truth": "Didukung",
+    "category": "Pendidikan / Kebijakan"
+  }
+]

@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+backend/venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Next.js build output
+frontend/.next/
+frontend/out/
+
+# Chroma DB
+chroma_db/
+
+# Environment variables
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
