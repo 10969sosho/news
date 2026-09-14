@@ -15,9 +15,9 @@ module.exports = {
       name: "antihoax-frontend",
       cwd: "/home/alurelab/news.solusisurabaya.com/frontend",
       script: "node_modules/next/dist/bin/next",
-      args: "start -p 3000",
+      args: "start -p 3030",
       env: {
-        PORT: 3000,
+        PORT: 3030,
         NODE_ENV: "production",
         BACKEND_API_URL: "http://127.0.0.1:8000"
       }
