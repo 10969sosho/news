@@ -2,9 +2,9 @@ module.exports = {
   apps: [
     {
       name: "antihoax-backend",
-      cwd: "./backend",
+      cwd: "/home/alurelab/news.solusisurabaya.com/backend",
       script: "run_server.py",
-      interpreter: "./venv/bin/python",
+      interpreter: "/home/alurelab/news.solusisurabaya.com/backend/venv/bin/python",
       env: {
         PORT: 8000,
         HOST: "127.0.0.1",
@@ -13,7 +13,7 @@ module.exports = {
     },
     {
       name: "antihoax-frontend",
-      cwd: "./frontend",
+      cwd: "/home/alurelab/news.solusisurabaya.com/frontend",
       script: "node_modules/next/dist/bin/next",
       args: "start -p 3000",
       env: {
