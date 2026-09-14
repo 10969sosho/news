@@ -44,8 +44,21 @@ fi
 
 echo "=== [3/6] Setup Lingkungan Python (Backend) di Target ==="
 cd "$TARGET_DIR/backend"
+
+# Deteksi binary Python
+if command -v python3 &> /dev/null; then
+    PY_BIN="python3"
+elif [ -f "/opt/alt/python310/bin/python3" ]; then
+    PY_BIN="/opt/alt/python310/bin/python3"
+elif [ -f "/opt/alt/python311/bin/python3" ]; then
+    PY_BIN="/opt/alt/python311/bin/python3"
+else
+    echo "Error: Python 3 tidak ditemukan di sistem."
+    exit 1
+fi
+
 if [ ! -d "venv" ]; then
-    python3 -m venv venv
+    "$PY_BIN" -m venv venv
 fi
 source venv/bin/activate
 pip install --upgrade pip

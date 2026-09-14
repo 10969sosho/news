@@ -4,7 +4,7 @@ module.exports = {
       name: "antihoax-backend",
       cwd: "./backend",
       script: "run_server.py",
-      interpreter: "python3",
+      interpreter: "./venv/bin/python",
       env: {
         PORT: 8000,
         HOST: "127.0.0.1",
