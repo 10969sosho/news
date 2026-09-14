@@ -11,9 +11,9 @@
 
 set -e
 
-# Konfigurasi variabel (sesuaikan dengan subdomain lu)
-PROJECT_NAME="hoax"
-DOMAIN_TARGET="antihoax.solusisurabaya.com" # Ganti dengan nama subdomain lu
+# Konfigurasi variabel untuk news.solusisurabaya.com
+PROJECT_NAME="news"
+DOMAIN_TARGET="news.solusisurabaya.com"
 TARGET_DIR="/home/alurelab/$DOMAIN_TARGET"
 REPO_DIR="/home/alurelab/repositories/$PROJECT_NAME"
 
