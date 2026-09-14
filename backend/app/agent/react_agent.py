@@ -50,15 +50,20 @@ class ReActVerificationAgent:
             return self._mock_llm_response(prompt)
             
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            kwargs = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": "Anda adalah mesin pemeriksa fakta akurat yang HANYA menjawab dalam format JSON valid."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=temperature,
-                response_format={"type": "json_object"}
-            )
+                "response_format": {"type": "json_object"}
+            }
+            # Model gpt-5 / luna / o1 / o3 hanya menerima temperature default (1)
+            model_lower = self.model.lower()
+            if not any(k in model_lower for k in ["gpt-5", "luna", "o1", "o3"]):
+                kwargs["temperature"] = temperature
+
+            response = await self.client.chat.completions.create(**kwargs)
             return response.choices[0].message.content or "{}"
         except Exception as e:
             logger.error(f"Error memanggil LLM API: {e}. Menggunakan fallback.")
