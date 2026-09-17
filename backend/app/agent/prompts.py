@@ -1,102 +1,86 @@
 """
-Prompt templates untuk sistem verifikasi fakta otonom berbahasa Indonesia
-berdasarkan kerangka kerja ReAct (Reasoning and Acting) + RAG.
+Prompt templates untuk DIGITAL WATCH (WEB ANALYZE TRUTH AND CHECKING HUB)
+Mendukung verifikasi bilingual (Bahasa Indonesia & English)
+dengan sistem rating persentase kebenaran (Truth Score 0 - 100%).
 """
 
-DECOMPOSITION_PROMPT = """Anda adalah asisten AI pemeriksa fakta ahli berbahasa Indonesia.
-Tugas Anda adalah melakukan dekomposisi terhadap sebuah klaim menjadi 2 hingga 4 sub-pertanyaan faktual spesifik yang dapat diverifikasi melalui pencarian informasi eksternal.
+DECOMPOSITION_PROMPT = """You are an expert fact-checking AI assistant for DIGITAL WATCH (Web Analyze Truth and Checking Hub).
+Your task is to decompose the following claim into 2 to 3 specific, neutral, factual sub-questions that can be verified via web search. Provide questions in both Indonesian and English.
 
-Klaim:
+Claim:
 "{claim}"
 
-Kriteria sub-pertanyaan:
-1. Spesifik, faktual, netral, dan langsung menyasar inti kebenaran klaim (objek, angka, peristiwa, nama tokoh, pernyataan resmi).
-2. Hindari pertanyaan bernada opini atau bias.
-3. Gunakan bahasa Indonesia baku.
-
-Keluarkan format JSON saja tanpa markdown lain:
+Return strictly in valid JSON format:
 {{
+  "detected_language": "id" or "en",
   "sub_questions": [
-    "Pertanyaan 1",
-    "Pertanyaan 2"
+    "Pertanyaan spesifik dalam Bahasa Indonesia 1",
+    "Pertanyaan spesifik dalam Bahasa Indonesia 2"
+  ],
+  "sub_questions_en": [
+    "Specific factual question in English 1",
+    "Specific factual question in English 2"
   ]
 }}
 """
 
-REACT_STEP_PROMPT = """Anda adalah Controller Agent dalam arsitektur ReAct (Reason and Act) untuk verifikasi hoaks media sosial di Indonesia.
+REACT_STEP_PROMPT = """You are the Controller Agent in DIGITAL WATCH (Web Analyze Truth and Checking Hub).
 
-Klaim yang diperiksa:
+Claim being analyzed:
 "{claim}"
 
-Sub-pertanyaan panduan:
+Sub-questions guide:
 {sub_questions}
 
-Bukti yang telah terkumpul sejauh ini ({evidence_count} bukti):
+Evidence collected so far ({evidence_count} items):
 {evidence_summary}
 
-Iterasi saat ini: {current_iteration} dari maksimum {max_iterations}.
+Current iteration: {current_iteration} of {max_iterations}.
 
-Tugas Anda:
-1. Lakukan penalaran (Thought) terhadap klaim berdasarkan bukti yang ada: apakah klaim sudah terbukti benar, terbukti palsu/hoaks, atau informasinya masih kurang?
-2. Tentukan tindakan (Action):
-   - Jika bukti masih belum cukup dan iterasi belum habis, pilih "SEARCH" dan tentukan query pencarian web yang paling efektif.
-   - Jika bukti sudah sangat kuat untuk mengambil keputusan (mendukung atau membantah), pilih "FINISH".
-3. Tentukan Action Input:
-   - Jika SEARCH: tulis query pencarian yang tajam, spesifik, netral (misal: "cek fakta [topik]", "[pernyataan resmi kementerian] [isu]", dsb).
-   - Jika FINISH: tulis "BUKTI_CUKUP".
+Your task:
+1. Reason about the claim against the gathered evidence (in both Indonesian and English).
+2. Determine Action:
+   - "SEARCH" if evidence is insufficient or inconclusive.
+   - "FINISH" if evidence is already conclusive to determine the truth score.
+3. Action Input:
+   - If SEARCH: provide the most effective, objective search keywords (without Boolean operators like OR/site).
+   - If FINISH: write "BUKTI_CUKUP".
 
-Kembalikan respon DALAM FORMAT JSON SAJA:
+Return strictly in valid JSON format:
 {{
-  "thought": "Penjelasan penalaran Anda di tahap ini dalam bahasa Indonesia...",
-  "action": "SEARCH" atau "FINISH",
-  "action_input": "kata kunci pencarian atau BUKTI_CUKUP"
+  "thought": "Penjelasan penalaran dalam Bahasa Indonesia...",
+  "thought_en": "Reasoning explanation in English...",
+  "action": "SEARCH" or "FINISH",
+  "action_input": "kata kunci pencarian netral"
 }}
 """
 
-CONFIDENCE_ASSESSMENT_PROMPT = """Anda adalah evaluator bukti (Evidence Assessor) untuk sistem verifikasi fakta.
+FINAL_VERIFICATION_PROMPT = """You are the Lead Fact-Checking Analyst for DIGITAL WATCH (Web Analyze Truth and Checking Hub).
 
-Klaim:
+Claim evaluated:
 "{claim}"
 
-Kumpulan Bukti:
+Collected Evidence:
 {evidence_text}
 
-Tugas Anda adalah menilai seberapa cukup, kredibel, dan relevan bukti-bukti di atas untuk menentukan kebenaran klaim tersebut.
-Berikan nilai keyakinan (confidence score) antara 0.00 hingga 1.00.
-Kriteria nilai:
-- 0.85 - 1.00: Bukti sangat kuat, ada konfirmasi resmi/berita kredibel/klarifikasi dari sumber berwenang atau pemeriksa fakta terverifikasi (TurnBackHoax, Kominfo, media arus utama). Cukup untuk menetapkan Didukung atau Ditolak.
-- 0.50 - 0.84: Ada beberapa informasi terkait tetapi belum konklusif atau terdapat informasi yang kontradiktif.
-- 0.00 - 0.49: Bukti sangat minim, tidak relevan, atau tidak ditemukan rujukan tepercaya.
+Task:
+Determine the overall Truth Score (0 to 100%) and write a comprehensive explanation in both Bahasa Indonesia and English.
 
-Kembalikan respon JSON SAJA:
+Rating scale criteria:
+- 0 to 59%: "Hoax" (False, fabricated news, scam, phishing, altered media, debunked rumors)
+- 60 to 75%: "Rendah" / "Low" (Low credibility, largely misleading, doubtful claims, unverified assertions)
+- 76 to 85%: "Sedang" / "Moderate" (Partially true, missing important context, exaggeration)
+- 86 to 100%: "Tinggi" / "High" (Verified fact, officially confirmed by credible authorities and reputable news)
+
+Provide a thorough, transparent explanation with citations of sources and context.
+
+Return strictly in valid JSON format:
 {{
-  "confidence": 0.90,
-  "assessment_reason": "Ringkasan evaluasi bukti..."
-}}
-"""
-
-FINAL_VERIFICATION_PROMPT = """Anda adalah analis utama verifikasi fakta (Fact-Checking Analyst) berbahasa Indonesia.
-
-Klaim yang diuji:
-"{claim}"
-
-Kumpulan Bukti Terkumpul:
-{evidence_text}
-
-Berdasarkan bukti-bukti di atas, berikan putusan akhir:
-1. Status Klaim:
-   - "Didukung" : Klaim terbukti BENAR / FAKTA sesuai dengan bukti tepercaya.
-   - "Ditolak" : Klaim terbukti SALAH / HOAKS / KELIRU / DISINFORMASI.
-   - "Not Enough Information" : Bukti tidak memadai untuk membuktikan kebenaran maupun kepalsuan klaim.
-2. Penjelasan Komprehensif (Rationale):
-   - Jelaskan secara transparan runutan fakta.
-   - Sebutkan rujukan sumber yang mengonfirmasi atau membantah klaim tersebut.
-   - Jika hoaks, jelaskan konteks sebenarnya (misal: klaim lama beredar kembali, manipulasi video/gambar, pencatutan nama tokoh, penipuan link, dll).
-
-Kembalikan respon DALAM FORMAT JSON SAJA:
-{{
-  "status": "Didukung" | "Ditolak" | "Not Enough Information",
-  "confidence": 0.92,
-  "rationale": "Uraian penjelasan lengkap dan transparan berbahasa Indonesia..."
+  "truth_score": 15,
+  "tier": "Hoax",
+  "tier_label": "Hoax / Disinformasi",
+  "tier_label_en": "Hoax / Fabricated",
+  "rationale": "Penjelasan komprehensif runutan fakta dan bantahan sumber resmi dalam Bahasa Indonesia...",
+  "rationale_en": "Comprehensive fact-checking analysis and official source debunk in English..."
 }}
 """

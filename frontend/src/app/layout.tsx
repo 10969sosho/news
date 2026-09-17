@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Anti-Hoax AI | Sistem Deteksi Hoaks Berbasis Agentic AI Otonom",
-  description: "Implementasi ReAct (Reason and Act) + RAG Fact-Checking Platform",
+  title: "DIGITAL WATCH (WEB ANALYZE TRUTH AND CHECKING HUB)",
+  description: "Autonomous Agentic Fact-Checking and Truth Analysis Platform",
 };
 
 export default function RootLayout({

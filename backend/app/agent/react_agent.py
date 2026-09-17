@@ -8,11 +8,10 @@ except ImportError:
     AsyncOpenAI = None
 from app.config import settings
 from app.agent.models import (
-    ClaimStatus, Evidence, ThoughtStep, VerificationResult, StreamEvent
+    TruthTier, Evidence, ThoughtStep, VerificationResult, StreamEvent
 )
 from app.agent.prompts import (
-    DECOMPOSITION_PROMPT, REACT_STEP_PROMPT,
-    CONFIDENCE_ASSESSMENT_PROMPT, FINAL_VERIFICATION_PROMPT
+    DECOMPOSITION_PROMPT, REACT_STEP_PROMPT, FINAL_VERIFICATION_PROMPT
 )
 from app.rag.search_service import search_service
 from app.rag.vector_store import vector_store
@@ -29,7 +28,6 @@ class ReActVerificationAgent:
         if AsyncOpenAI is None:
             logger.warning("Pustaka 'openai' belum terinstall. Menggunakan mode simulasi / offline.")
         elif self.provider == "gemini" and settings.GEMINI_API_KEY:
-            # Google Gemini via OpenAI-compatible endpoint
             self.client = AsyncOpenAI(
                 api_key=settings.GEMINI_API_KEY,
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -53,12 +51,11 @@ class ReActVerificationAgent:
             kwargs = {
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": "Anda adalah mesin pemeriksa fakta akurat yang HANYA menjawab dalam format JSON valid."},
+                    {"role": "system", "content": "You are a professional fact-checking analysis system. Output ONLY valid JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 "response_format": {"type": "json_object"}
             }
-            # Model gpt-5 / luna / o1 / o3 hanya menerima temperature default (1)
             model_lower = self.model.lower()
             if not any(k in model_lower for k in ["gpt-5", "luna", "o1", "o3"]):
                 kwargs["temperature"] = temperature
@@ -79,50 +76,68 @@ class ReActVerificationAgent:
             logger.warning(f"Gagal parse JSON: {e}, text: {text[:100]}...")
             return {}
 
-    async def decompose_claim(self, claim: str) -> List[str]:
-        """Tahap 1: Dekomposisi klaim C menjadi sub-pertanyaan Q"""
+    async def decompose_claim(self, claim: str) -> Dict[str, Any]:
+        """Dekomposisi klaim C menjadi sub-pertanyaan bilingual"""
         prompt = DECOMPOSITION_PROMPT.format(claim=claim)
         raw = await self._call_llm(prompt, temperature=0.1)
         data = self._extract_json(raw)
+        
         sub_q = data.get("sub_questions", [])
+        sub_q_en = data.get("sub_questions_en", [])
+        lang = data.get("detected_language", "id")
+
         if not sub_q:
             sub_q = [
-                f"Apakah benar {claim}?",
-                f"Apa sumber resmi atau klarifikasi terkait {claim}?"
+                f"Apakah terdapat sumber resmi terkait '{claim}'?",
+                f"Bagaimana hasil penelusuran cek fakta mengenai isu ini?"
             ]
-        return sub_q
+        if not sub_q_en:
+            sub_q_en = [
+                f"Are there credible official sources regarding '{claim}'?",
+                f"What do verified fact-checking organizations report on this claim?"
+            ]
+
+        return {
+            "detected_language": lang,
+            "sub_questions": sub_q,
+            "sub_questions_en": sub_q_en
+        }
 
     async def verify_stream(
         self,
         claim: str,
-        max_iterations: int = 5,
-        tau: float = 0.85
+        max_iterations: int = 3,
+        target_language: str = "id"
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Eksekusi Algoritma 1 dari paper dengan Server-Sent Events (SSE) Streaming
-        sehingga user di web/frontend dapat melihat jejak penalaran secara real-time.
+        Streaming ReAct Fact-Checking Loop untuk DIGITAL WATCH
+        dengan estimasi persentase kebenaran (Truth Score).
         """
-        yield {"event": "start", "data": {"claim": claim, "tau": tau, "max_iterations": max_iterations}}
+        yield {"event": "start", "data": {"claim": claim, "max_iterations": max_iterations}}
         
-        # 1. Inisialisasi E <- empty; i <- 0
         evidence_list: List[Evidence] = []
         reasoning_chain: List[ThoughtStep] = []
         i = 0
-        current_conf = 0.0
 
-        # 2. Q <- Dekomposisi(C)
-        yield {"event": "status", "data": {"message": "Melakukan dekomposisi semantik klaim..."}}
-        sub_questions = await self.decompose_claim(claim)
+        yield {"event": "status", "data": {"message": "Menganalisis dan melakukan dekomposisi semantik klaim..."}}
+        decomp = await self.decompose_claim(claim)
+        sub_questions = decomp["sub_questions"]
+        sub_questions_en = decomp["sub_questions_en"]
+        detected_language = decomp.get("detected_language", "id")
+
         yield {
             "event": "decomposition",
-            "data": {"sub_questions": sub_questions}
+            "data": {
+                "detected_language": detected_language,
+                "sub_questions": sub_questions,
+                "sub_questions_en": sub_questions_en
+            }
         }
 
-        # 3. WHILE i < N DO
+        # Siklus ReAct
         while i < max_iterations:
-            yield {"event": "status", "data": {"message": f"Iterasi ReAct #{i+1} dari {max_iterations}..."}}
+            yield {"event": "status", "data": {"message": f"Siklus ReAct #{i+1} dari {max_iterations}..."}}
             
-            # 4 & 5. Thought & PlanAction
             evidence_summary = self._format_evidence_summary(evidence_list)
             step_prompt = REACT_STEP_PROMPT.format(
                 claim=claim,
@@ -135,7 +150,8 @@ class ReActVerificationAgent:
             step_raw = await self._call_llm(step_prompt, temperature=0.2)
             step_data = self._extract_json(step_raw)
             
-            thought = step_data.get("thought", f"Menganalisis kecukupan bukti terkait klaim '{claim}'.")
+            thought = step_data.get("thought", f"Mengevaluasi bukti terkait klaim '{claim}'.")
+            thought_en = step_data.get("thought_en", f"Evaluating collected evidence regarding '{claim}'.")
             action = step_data.get("action", "SEARCH").upper()
             action_input = step_data.get("action_input", sub_questions[i % len(sub_questions)])
             
@@ -144,28 +160,26 @@ class ReActVerificationAgent:
                 "data": {
                     "iteration": i + 1,
                     "thought": thought,
+                    "thought_en": thought_en,
                     "action": action,
                     "action_input": action_input
                 }
             }
 
             observation = ""
-            # 6. IF action = SEARCH THEN
             if action == "SEARCH":
-                yield {"event": "status", "data": {"message": f"Mencari bukti eksternal untuk: '{action_input}'..."}}
+                yield {"event": "status", "data": {"message": f"Mencari bukti rujukan: '{action_input}'..."}}
                 
-                # Retrieve RAG (Local Vector Store + Web Search Dinamis)
+                # Retrieve RAG
                 local_docs = vector_store.query_similar(action_input, n_results=2)
                 web_docs = await search_service.search(action_input, max_results=4)
                 
-                # 8. E <- E union Rank(d)
                 new_docs = local_docs + web_docs
                 for d in new_docs:
-                    # Cegah duplikasi berdasarkan URL / snippet
                     if not any(e.url == d.url or (d.snippet and d.snippet in e.snippet) for e in evidence_list):
                         evidence_list.append(d)
                 
-                observation = f"Ditemukan {len(new_docs)} bukti baru dari sumber lokal dan web eksternal."
+                observation = f"Ditemukan {len(new_docs)} bukti baru dari sumber berita dan pemeriksa fakta."
                 yield {
                     "event": "observation",
                     "data": {
@@ -176,82 +190,79 @@ class ReActVerificationAgent:
                     }
                 }
 
-            # 10. conf <- LLM.Assess(C, E)
-            assess_prompt = CONFIDENCE_ASSESSMENT_PROMPT.format(
-                claim=claim,
-                evidence_text=self._format_evidence_summary(evidence_list)
-            )
-            assess_raw = await self._call_llm(assess_prompt, temperature=0.1)
-            assess_data = self._extract_json(assess_raw)
-            current_conf = float(assess_data.get("confidence", 0.5))
-            assess_reason = assess_data.get("assessment_reason", "")
-
+            # Hitung estimasi sementara
             step_record = ThoughtStep(
                 iteration=i + 1,
                 thought=thought,
+                thought_en=thought_en,
                 action=action,
                 action_input=action_input,
                 observation=observation,
-                confidence=current_conf
+                confidence=min(100.0, float(len(evidence_list) * 25.0))
             )
             reasoning_chain.append(step_record)
 
-            yield {
-                "event": "assessment",
-                "data": {
-                    "iteration": i + 1,
-                    "confidence": current_conf,
-                    "threshold": tau,
-                    "assessment_reason": assess_reason
-                }
-            }
-
-            # 11. IF conf >= tau THEN BREAK
-            if current_conf >= tau or action == "FINISH":
-                yield {
-                    "event": "status",
-                    "data": {"message": f"Tingkat keyakinan bukti ({current_conf:.2f}) telah mencapai ambang batas ({tau}). Menghentikan iterasi."}
-                }
+            if action == "FINISH":
                 break
                 
             i += 1
 
-        # 14. Evaluasi Akhir: IF E = empty OR conf < tau THEN S <- NEI
-        yield {"event": "status", "data": {"message": "Menyusun putusan akhir dan penjelasan transparan..."}}
+        # Sintesis Akhir: Penentuan Truth Score & Kategori
+        yield {"event": "status", "data": {"message": "Menghitung Truth Score dan menyusun sintesis bilingual..."}}
         
-        if len(evidence_list) == 0 or current_conf < tau:
-            status = ClaimStatus.NEI
-            rationale = (
-                f"Bukti yang berhasil dihimpun dari sumber eksternal belum mencapai ambang batas keyakinan (𝜏={tau}). "
-                f"Skor keyakinan saat ini hanya {current_conf:.2f}. Informasi mengenai klaim ini sangat minim atau belum ada konfirmasi resmi."
-            )
+        final_prompt = FINAL_VERIFICATION_PROMPT.format(
+            claim=claim,
+            evidence_text=self._format_evidence_summary(evidence_list)
+        )
+        final_raw = await self._call_llm(final_prompt, temperature=0.1)
+        final_data = self._extract_json(final_raw)
+        
+        raw_score = final_data.get("truth_score", 50)
+        try:
+            truth_score = float(raw_score)
+            truth_score = max(0.0, min(100.0, truth_score))
+        except (ValueError, TypeError):
+            truth_score = 50.0
+
+        # Tentukan Kategori Sesuai Permintaan User:
+        # < 60% : Hoax
+        # 61 - 75% : Rendah
+        # 76 - 85% : Sedang
+        # 86 - 100% : Tinggi
+        if truth_score < 60.0:
+            tier = TruthTier.HOAX
+            tier_label = "Hoax / Palsu"
+            tier_label_en = "Hoax / Fabricated"
+        elif truth_score <= 75.0:
+            tier = TruthTier.RENDAH
+            tier_label = "Kebenaran Rendah"
+            tier_label_en = "Low Credibility"
+        elif truth_score <= 85.0:
+            tier = TruthTier.SEDANG
+            tier_label = "Kebenaran Sedang"
+            tier_label_en = "Moderate Credibility"
         else:
-            final_prompt = FINAL_VERIFICATION_PROMPT.format(
-                claim=claim,
-                evidence_text=self._format_evidence_summary(evidence_list)
-            )
-            final_raw = await self._call_llm(final_prompt, temperature=0.1)
-            final_data = self._extract_json(final_raw)
-            
-            raw_status = final_data.get("status", "Not Enough Information")
-            if "didukung" in raw_status.lower() or "supported" in raw_status.lower() or "benar" in raw_status.lower():
-                status = ClaimStatus.DIDUKUNG
-            elif "ditolak" in raw_status.lower() or "refuted" in raw_status.lower() or "salah" in raw_status.lower() or "hoaks" in raw_status.lower():
-                status = ClaimStatus.DITOLAK
-            else:
-                status = ClaimStatus.NEI
-                
-            rationale = final_data.get("rationale", "Hasil verifikasi berdasarkan bukti-bukti yang teridentifikasi.")
+            tier = TruthTier.TINGGI
+            tier_label = "Kebenaran Tinggi (Fakta)"
+            tier_label_en = "High Credibility (Verified Fact)"
+
+        rationale = final_data.get("rationale", "Hasil analisis bukti penelusuran fakta.")
+        rationale_en = final_data.get("rationale_en", "Analysis based on collected verification evidence.")
 
         final_result = VerificationResult(
             claim=claim,
-            status=status,
-            confidence=current_conf,
+            truth_score=truth_score,
+            tier=tier,
+            tier_label=tier_label,
+            tier_label_en=tier_label_en,
             sub_questions=sub_questions,
+            sub_questions_en=sub_questions_en,
             reasoning_chain=reasoning_chain,
             evidence=evidence_list,
             rationale=rationale,
-            iterations_used=i + 1
+            rationale_en=rationale_en,
+            iterations_used=i + 1,
+            detected_language=detected_language
         )
 
         yield {
@@ -259,10 +270,9 @@ class ReActVerificationAgent:
             "data": final_result.model_dump()
         }
 
-    async def verify(self, claim: str, max_iterations: int = 5, tau: float = 0.85) -> VerificationResult:
-        """Versi non-streaming untuk direct call / benchmark."""
+    async def verify(self, claim: str, max_iterations: int = 3, target_language: str = "id") -> VerificationResult:
         last_result = None
-        async for event in self.verify_stream(claim, max_iterations, tau):
+        async for event in self.verify_stream(claim, max_iterations, target_language):
             if event["event"] == "final":
                 last_result = VerificationResult(**event["data"])
         return last_result
@@ -275,35 +285,38 @@ class ReActVerificationAgent:
             lines.append(
                 f"[{i+1}] Judul: {ev.title}\n"
                 f"    Sumber: {ev.url}\n"
-                f"    Kutipan: {ev.snippet[:250]}..."
+                f"    Ringkasan: {ev.snippet[:250]}..."
             )
         return "\n\n".join(lines)
 
     def _mock_llm_response(self, prompt: str) -> str:
-        """Simulasi respons cerdas ketika LLM API Key belum diisi."""
-        if "dekomposisi" in prompt.lower():
+        if "decomposition" in prompt.lower() or "dekomposisi" in prompt.lower():
             return json.dumps({
+                "detected_language": "id",
                 "sub_questions": [
-                    "Apakah ada pengumuman resmi terkait klaim tersebut?",
-                    "Bagaimana hasil penelusuran cek fakta dari media kredibel?"
+                    "Apakah terdapat pengumuman resmi pemerintah terkait klaim ini?",
+                    "Bagaimana hasil pengecekan dari portal pemeriksa fakta?"
+                ],
+                "sub_questions_en": [
+                    "Are there official government announcements regarding this claim?",
+                    "What are the findings from verified fact-checking portals?"
                 ]
             })
-        elif "penalaran" in prompt.lower() or "react" in prompt.lower():
+        elif "react" in prompt.lower() or "reasoning" in prompt.lower():
             return json.dumps({
-                "thought": "Melakukan penelusuran klarifikasi dan pemberitaan fakta terkait isu ini.",
+                "thought": "Melakukan penelusuran sumber berita dan verifikasi terkait klaim.",
+                "thought_en": "Performing news search and verification on this claim.",
                 "action": "SEARCH",
-                "action_input": "cek fakta klarifikasi berita"
+                "action_input": "cek fakta berita resmi"
             })
-        elif "evaluator" in prompt.lower() or "confidence" in prompt.lower():
+        elif "analyst" in prompt.lower() or "evaluator" in prompt.lower() or "final" in prompt.lower():
             return json.dumps({
-                "confidence": 0.88,
-                "assessment_reason": "Ditemukan artikel cek fakta resmi yang secara eksplisit mengonfirmasi/membantah isu ini."
-            })
-        elif "analis utama" in prompt.lower() or "putusan akhir" in prompt.lower():
-            return json.dumps({
-                "status": "Ditolak",
-                "confidence": 0.88,
-                "rationale": "Berdasarkan penelusuran fakta dan bukti digital, informasi ini merupakan hoaks/disinformasi yang telah diklarifikasi oleh lembaga berwenang dan pemeriksa fakta independen."
+                "truth_score": 15,
+                "tier": "Hoax",
+                "tier_label": "Hoax / Palsu",
+                "tier_label_en": "Hoax / Fabricated",
+                "rationale": "Klaim ini terbukti tidak berdasar atau telah diklarifikasi sebagai disinformasi oleh lembaga pemeriksa fakta.",
+                "rationale_en": "This claim is confirmed to be fabricated or classified as disinformation by verified fact-checking authorities."
             })
         return "{}"
 
