@@ -112,7 +112,10 @@ export default function Home() {
       setCurrentThought((prev: any) => prev ? { ...prev, observation: data.observation } : null);
     });
 
+    let receivedFinal = false;
+
     es.addEventListener("final", (e) => {
+      receivedFinal = true;
       const data = JSON.parse(e.data);
       setFinalResult(data);
       setLoading(false);
@@ -122,8 +125,10 @@ export default function Home() {
     });
 
     es.onerror = () => {
-      handleFallbackPost();
       es.close();
+      if (!receivedFinal) {
+        handleFallbackPost();
+      }
     };
   };
 

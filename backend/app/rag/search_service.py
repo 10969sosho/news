@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import logging
 import re
@@ -70,7 +71,7 @@ class SearchService:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code != 200:
                 return []
@@ -108,7 +109,7 @@ class SearchService:
             "include_domains": [],
             "max_results": max_results,
         }
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
@@ -132,13 +133,20 @@ class SearchService:
             logger.warning("Pustaka 'duckduckgo_search' belum terinstall.")
             return []
             
-        ddgs = DDGS()
-        raw_results = ddgs.text(
-            query,
-            region="id-id",
-            safesearch="moderate",
-            max_results=max_results
-        )
+        def _fetch():
+            ddgs = DDGS()
+            return list(ddgs.text(
+                query,
+                region="id-id",
+                safesearch="moderate",
+                max_results=max_results
+            ))
+
+        try:
+            raw_results = await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=6.0)
+        except Exception as e:
+            logger.warning(f"DuckDuckGo search timed out or failed: {e}")
+            return []
 
         evidence_list = []
         for i, item in enumerate(raw_results):

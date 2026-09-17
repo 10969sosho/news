@@ -71,7 +71,7 @@ async def verify_claim_stream(
                 "data": json.dumps(item["data"], ensure_ascii=False)
             }
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(event_generator(), ping=5)
 
 @app.post("/api/kb/add")
 async def add_knowledge(doc_id: str, title: str, text: str, url: str, label: str):
