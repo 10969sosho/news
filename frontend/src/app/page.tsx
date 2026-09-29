@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
+import Image from "next/image";
 import { 
   ShieldCheck, AlertTriangle, XCircle, Search, Cpu, RefreshCw, 
   ExternalLink, ChevronRight, CheckCircle2, Sparkles, Database,
@@ -216,8 +217,15 @@ export default function Home() {
       <header className="border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
           <div className="flex items-center space-x-2.5 sm:space-x-3.5">
-            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-cyan-600 via-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 border border-cyan-400/30 flex-shrink-0">
-              <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            <div className="h-10 sm:h-12 w-auto flex items-center justify-center flex-shrink-0">
+              <Image 
+                src="/logo.png" 
+                alt="Digital Watch Logo" 
+                width={80} 
+                height={40} 
+                className="h-9 sm:h-11 w-auto object-contain filter drop-shadow-[0_0_12px_rgba(59,130,246,0.35)]" 
+                priority
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5 sm:gap-2">
